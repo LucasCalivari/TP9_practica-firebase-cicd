@@ -1,0 +1,16 @@
+
+▶ HTML: https://practica-firebase-cicd-lucas.web.app/
+  status 200
+  ✘ content-security-policy (falta)
+  ✔ strict-transport-security: max-age=31556926; includeSubDomains; preload
+  ✘ x-content-type-options (falta)
+  ✘ x-frame-options (falta)
+  ✘ referrer-policy (falta)
+  ✘ permissions-policy (falta)
+  · cache-control: max-age=3600
+
+▶ Asset estático: /_next/static/chunks/1x6obpmlu1_c2.js
+  ✘ cache-control: max-age=3600
+
+❌ 6 control(es) pendiente(s).
+
