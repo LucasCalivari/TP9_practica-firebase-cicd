@@ -9,7 +9,8 @@ name: Preview en Pull Request
 
 # TODO A1: Cambiá el trigger para que este workflow corra en cada Pull Request.
 on:
-  workflow_dispatch:
+  workflow_dispatch: # se mantiene para poder lanzar el preview a mano desde la pestaña Actions
+  pull_request: # A1: el workflow se dispara por eventos de Pull Request (abrir, pushear commits nuevos, reabrir)
 
 permissions:
   contents: read
@@ -45,8 +46,8 @@ jobs:
         run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: 1
-          NEXT_PUBLIC_BUILD_SHA: "TODO"
-          NEXT_PUBLIC_BUILD_REF: "TODO"
+          NEXT_PUBLIC_BUILD_SHA: ${{ github.event.pull_request.head.sha }} # A2: SHA del último commit de la rama del PR (no el del merge temporal, que es github.sha)
+          NEXT_PUBLIC_BUILD_REF: ${{ github.head_ref }} # A2: nombre de la rama origen del PR (se ve en el footer)
           NEXT_PUBLIC_BUILD_TIME: ${{ github.event.pull_request.updated_at }}
 
       - name: Deploy a preview channel
@@ -59,4 +60,4 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PRACTICA_FIREBASE_CICD_LUCAS }}
           projectId: practica-firebase-cicd-lucas
           # TODO A3: Definí cuánto tiempo vive el preview (ej. 3d). ¿Por qué no conviene que viva para siempre?
-          # expires: ???
+          expires: 3d # A3: el canal de preview se borra solo a los 3 días, para no acumular URLs viejas con código sin revisar

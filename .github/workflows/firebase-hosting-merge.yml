@@ -8,7 +8,10 @@ name: Deploy a producción
 
 # TODO A1: Cambiá el trigger para que corra en cada push a la rama `main`.
 on:
-  workflow_dispatch:
+  workflow_dispatch: # se mantiene para poder lanzar el deploy a mano desde la pestaña Actions
+  push: # A1: el workflow se dispara cuando alguien hace push
+    branches:
+      - main # A1: solo si el push es a main (es decir, al mergear un PR)
 
 permissions:
   contents: read
@@ -44,8 +47,8 @@ jobs:
         run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: 1
-          NEXT_PUBLIC_BUILD_SHA: "TODO"
-          NEXT_PUBLIC_BUILD_REF: "TODO"
+          NEXT_PUBLIC_BUILD_SHA: ${{ github.sha }} # A2: hash del commit de main que se está desplegando (se ve en el footer)
+          NEXT_PUBLIC_BUILD_REF: ${{ github.ref_name }} # A2: nombre de la rama (acá siempre "main")
           NEXT_PUBLIC_BUILD_TIME: ${{ github.event.head_commit.timestamp }}
 
       - name: Deploy al canal live
@@ -55,4 +58,4 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PRACTICA_FIREBASE_CICD_LUCAS }}
           projectId: practica-firebase-cicd-lucas
           # TODO A3: ¿qué valor de channelId publica en producción?
-          # channelId: ???
+          channelId: live # A3: "live" es el canal de producción; cualquier otro valor crearía un preview
