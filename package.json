@@ -5,7 +5,7 @@
   "description": "Repo base - Práctica de Programación Avanzada: CI/CD con Firebase Hosting (preview channels) y hardening de headers HTTP",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/csp-hashes.mjs",
     "typecheck": "tsc --noEmit",
     "serve": "firebase emulators:start --only hosting",
     "deploy:preview": "firebase hosting:channel:deploy local-test --expires 1d"
