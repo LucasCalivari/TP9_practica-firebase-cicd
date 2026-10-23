@@ -124,6 +124,18 @@ El rollback solo reapunta `live` a una versión anterior; `main` no cambia. Ento
 
 ---
 
+## Concurrencia y environment (A4 y A5)
+
+**Preview (`firebase-hosting-pull-request.yml`).** Agregué `concurrency` con `group: preview-<número de PR>` y `cancel-in-progress: true`. Si se pushea de nuevo al mismo PR, el build anterior se cancela porque ya está desactualizado y solo importa el último commit. El grupo es por PR, así que dos PRs distintos no se cancelan entre sí.
+
+Lo probé con el PR #6 (rama `test/concurrency`): abrí el PR y, mientras corría el primer run (evento `opened`), pusheé un commit vacío. El primer run quedó en estado **Cancelled** a los 31 s (un build completo tarda unos 40 s), con la anotación `Canceling since a higher priority waiting request for preview-6 exists` (`preview-6` es el grupo de concurrencia de ese PR), y el segundo (evento `synchronize`) terminó en verde.
+
+**Producción (`firebase-hosting-merge.yml`).** Agregué `concurrency` con `group: production-deploy` y `cancel-in-progress: false`. Dos deploys nunca corren en paralelo, pero tampoco se corta uno en curso: el nuevo espera en fila. Cortar un deploy a mitad de camino podría dejar producción en un estado inconsistente, mientras que esperar solo cuesta unos segundos.
+
+**Environment `production` (A5).** El job de producción tiene `environment: production` con la URL del sitio. GitHub lo creó solo en el primer deploy y desde entonces cada run de producción muestra el link al sitio y queda registrado en el historial de deployments. No activé "Required reviewers": como el repo es de una sola persona, exigir aprobación manual solo agregaría un clic en cada deploy. En un equipo real sí lo activaría, porque agrega una barrera humana antes de tocar producción y permite restringir qué ramas pueden desplegar.
+
+---
+
 ## Problemas encontrados
 
 - `firebase init hosting:github` terminó con "unexpected error" después de crear el secreto: la herramienta intenta leer los workflows existentes y falla porque su trigger es solo `workflow_dispatch`. No afectó el resultado (el secreto ya estaba creado).
