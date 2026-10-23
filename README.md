@@ -155,3 +155,6 @@ Formato de un header en `firebase.json`:
 - **La imagen de portada no carga:** CSP bloqueando `img-src`.
 - **Cambié `firebase.json` y no veo los headers:** ¿reconstruiste y reiniciaste el emulador?
   ¿Estás mirando una respuesta cacheada? Probá con `curl -I` o en una ventana privada.
+
+
+Prueba de Preview aaaa
