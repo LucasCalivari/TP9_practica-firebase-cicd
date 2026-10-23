@@ -16,15 +16,16 @@ on:
 permissions:
   contents: read
 
-# TODO A4 (opcional): en producción NO queremos cancelar un deploy a mitad de
-#                     camino, pero sí evitar dos deploys en paralelo.
-#                     ¿Cómo configurás `concurrency` para eso?
+concurrency: # A4: controla qué pasa si hay varias ejecuciones de este workflow a la vez
+  group: production-deploy # A4: todas las ejecuciones comparten el mismo grupo, así que solo corre una por vez
+  cancel-in-progress: false # A4: NO cancela el deploy en curso; el nuevo espera en fila (un deploy cortado a mitad podría dejar producción inconsistente)
 
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
-    # TODO A5 (opcional): asociá este job a un GitHub Environment llamado
-    #                     `production` (permite exigir aprobación manual).
+    environment: # A5: asocia el job a un GitHub Environment (permite exigir aprobación manual y ver el historial de deploys)
+      name: production # A5: nombre del environment; GitHub lo crea solo la primera vez que se usa
+      url: https://practica-firebase-cicd-lucas.web.app # A5: GitHub muestra este link en cada deploy como "View deployment"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
