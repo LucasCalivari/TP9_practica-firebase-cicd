@@ -1,0 +1,13 @@
+> practica-firebase-cicd@1.0.0 atacar
+> node scripts/atacar.mjs
+Auditoría de SQL Connect · proyecto practica-firebase-cicd-lucas · emuladores locales
+✔ ListCursos responde sin login (7 cursos) — público por diseño
+✘ ListAlumnos devuelve datos personales SIN login
+    Ejemplo filtrado: {"email":"ana@ejemplo.test","id":"seed-uid-ana","nombre":"Ana Ficticia"}
+[2026-10-24T16:47:47.341Z]  @firebase/data-connect: DataConnect (13.1.0): Error while performing request: {"code":5,"message":"operation \"Inscribirme\" not found","details":[]}
+… Inscribirme todavía no existe (TODO L2)
+    operation "Inscribirme" not found
+[2026-10-24T16:47:47.472Z]  @firebase/data-connect: DataConnect (13.1.0): Error while performing request: {"code":5,"message":"operation \"Inscribirme\" not found","details":[]}
+… No se pudo inscribir al usuario A: no se pueden probar los controles de aislamiento
+    operation "Inscribirme" not found
+❌ 1 vulnerabilidad(es) · 2 pendiente(s)

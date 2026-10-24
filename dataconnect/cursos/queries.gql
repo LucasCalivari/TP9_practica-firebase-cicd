@@ -1,0 +1,58 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Queries del conector `cursos`.
+#  Cada operación DEBE declarar quién puede ejecutarla con @auth:
+#    PUBLIC     → cualquiera, incluso sin login (exige justificar con insecureReason)
+#    USER       → cualquier usuario autenticado con Firebase Auth
+#    NO_ACCESS  → nadie desde el cliente (solo herramientas de admin)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Catálogo: lo puede ver cualquiera.
+query ListCursos @auth(level: PUBLIC, insecureReason: "El catálogo de cursos es información pública.") {
+  cursos(orderBy: { titulo: ASC }) {
+    id
+    titulo
+    nivel
+    horas
+    descripcion
+    cupo
+  }
+}
+
+# L4 · ListAlumnos (operación heredada, auditada y corregida).
+# Antes estaba en PUBLIC: cualquiera, sin login, podía llamarla y obtener id, nombre y
+# email de TODOS los alumnos (datos personales). Como el código del cliente es público,
+# "lo usa solo el panel de admin" no protege nada: la API se puede invocar directamente.
+# Ahora es NO_ACCESS: ningún cliente puede ejecutarla. Un panel de administración debe
+# usar el Admin SDK en un servidor (que no pasa por @auth) o herramientas de admin como
+# `firebase dataconnect:execute`; no esta operación expuesta al navegador.
+# (insecureReason solo se usa con PUBLIC, por eso se eliminó.)
+query ListAlumnos @auth(level: NO_ACCESS) {
+  alumnos {
+    id
+    nombre
+    email
+  }
+}
+
+# L3 · MisInscripciones: las inscripciones del USUARIO QUE LLAMA.
+#   - @auth(level: USER): exige un usuario autenticado.
+#   - alumno(key: { id_expr: "auth.uid" }): busca al alumno por el UID del TOKEN. La query
+#     no recibe ningún id como variable, así que no hay forma de pedir los datos de otro:
+#     si recibiera $alumnoId y filtrara por él, cualquiera podría leer la inscripción
+#     de cualquier alumno cambiando ese valor (IDOR).
+#   - matriculas_on_alumno: las filas de Matricula del alumno, con alias `matriculas`
+#     para que la respuesta tenga la forma que espera app/mis-inscripciones.
+query MisInscripciones @auth(level: USER) {
+  alumno(key: { id_expr: "auth.uid" }) {
+    nombre
+    matriculas: matriculas_on_alumno {
+      fecha
+      curso {
+        id
+        titulo
+        nivel
+        horas
+      }
+    }
+  }
+}

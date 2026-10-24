@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Mutations del conector `cursos`.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Ejemplo resuelto: alta o actualización del perfil del alumno que llama.
+# Observá que el cliente solo manda `nombre`:
+#   - id_expr: "auth.uid"           → el servidor usa el UID del token
+#   - email_expr: "auth.token.email" → el servidor usa el email del token
+# Ningún usuario puede crear o modificar el perfil de otro.
+mutation UpsertAlumno($nombre: String!) @auth(level: USER) {
+  alumno_upsert(data: { id_expr: "auth.uid", nombre: $nombre, email_expr: "auth.token.email" })
+}
+
+# L2 · Inscribirme: inscribe AL USUARIO QUE LLAMA en un curso.
+#   - @auth(level: USER): exige un usuario autenticado; sin token, el servidor la rechaza.
+#   - alumnoId_expr: "auth.uid": el alumno sale del TOKEN, no de una variable. La operación
+#     solo recibe `cursoId`, así que nadie puede inscribir a otra persona (evita IDOR).
+#   - matricula_upsert (y no matricula_insert): es idempotente. Si la fila (alumno, curso)
+#     ya existe se actualiza en lugar de fallar por clave duplicada, así que inscribirse dos
+#     veces no da error ni duplica. `fecha` no se envía: la completa el servidor.
+mutation Inscribirme($cursoId: UUID!) @auth(level: USER) {
+  matricula_upsert(data: { alumnoId_expr: "auth.uid", cursoId: $cursoId })
+}
+
+# L5 · DarmeDeBaja: borra la inscripción del usuario que llama en ese curso, y solo esa.
+#   - La clave de la fila se arma con alumnoId_expr: "auth.uid" + cursoId, así que solo
+#     se puede borrar una matrícula PROPIA: un usuario no puede dar de baja a otro.
+mutation DarmeDeBaja($cursoId: UUID!) @auth(level: USER) {
+  matricula_delete(key: { alumnoId_expr: "auth.uid", cursoId: $cursoId })
+}

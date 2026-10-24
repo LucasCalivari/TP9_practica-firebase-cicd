@@ -34,7 +34,7 @@
           },
           {
             "key": "Content-Security-Policy",
-            "value": "default-src 'self'; script-src 'self' 'sha256-OBTN3RiyCV4Bq7dFqZ5a2pAXjnCcCYeTJMO2I/LYKeo=' 'sha256-Uc3FZ6vxe6J5gR7EmnAnzWIcAjG8NX9RGzwRxOPPAa8=' 'sha256-Y30EIL4c3713/FXzmbgJ+L79geJkxi5ViwLTypMEUVE=' 'sha256-jOTqV4e2trdmIH5vlTwu6D6+RKDn9kE36hpyk+O3hNk=' 'sha256-ohBYDP4jDEhpM4V4o0iLmc/txsVyq1JPbtSx6ah7HBw='; style-src 'self'; img-src 'self' https://picsum.photos https://fastly.picsum.photos; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+            "value": "default-src 'self'; script-src 'self' 'sha256-KnWEJp5OBtExOSqbZ4RH0MIOkm4e9PmTpp8PVLZrkug=' 'sha256-L/rYBNrQXUop/TKzuisDIwW13RIHEFb6YexytjovVQs=' 'sha256-OBTN3RiyCV4Bq7dFqZ5a2pAXjnCcCYeTJMO2I/LYKeo=' 'sha256-SShUv73YaxYqgbFci0GtzX2IGDof54EQWLxC8OkJPa8=' 'sha256-l9nnYr2Aw+bsfI7osgWu4lhraAlsxVzu5A5qXb3fOE8=' 'sha256-ohBYDP4jDEhpM4V4o0iLmc/txsVyq1JPbtSx6ah7HBw='; style-src 'self'; img-src 'self' https://picsum.photos https://fastly.picsum.photos; connect-src 'self' https://firebasedataconnect.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
           }
         ]
       },
@@ -57,5 +57,24 @@
         ]
       }
     ]
+  },
+  "dataconnect": {
+    "source": "dataconnect"
+  },
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "dataconnect": {
+      "port": 9399,
+      "dataDir": "dataconnect/.dataconnect/pgliteData"
+    },
+    "hosting": {
+      "port": 5000
+    },
+    "ui": {
+      "enabled": true
+    },
+    "singleProjectMode": true
   }
 }

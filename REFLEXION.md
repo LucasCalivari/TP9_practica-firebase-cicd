@@ -141,3 +141,105 @@ Lo probé con el PR #6 (rama `test/concurrency`): abrí el PR y, mientras corrí
 - `firebase init hosting:github` terminó con "unexpected error" después de crear el secreto: la herramienta intenta leer los workflows existentes y falla porque su trigger es solo `workflow_dispatch`. No afectó el resultado (el secreto ya estaba creado).
 - El emulador de Hosting no aplicaba ningún header en Windows. La causa es `glob-slash`, que usa `path.normalize` y devuelve `\` en lugar de `/`, por lo que los patrones de `source` nunca coinciden. Lo resolví con un parche local en `node_modules/glob-slash` usando `path.posix` (no se versiona; en Linux, donde corre GitHub Actions, no ocurre).
 - `git revert` de un merge commit requiere `-m 1`.
+
+
+---
+---
+
+## Clase 2 · SQL Connect
+
+- **Repo:** https://github.com/LucasCalivari/TP9_practica-firebase-cicd (mismo repo y mismo proyecto Firebase que la clase 1)
+- **PR con el cambio de CSP (L6):** ⏳ PENDIENTE: completar con el link del PR mergeado
+- **Producción:** https://practica-firebase-cicd-lucas.web.app
+
+### Decisiones de modelado y operaciones (L1 a L5)
+
+- **L1 · `Matricula`:** tabla intermedia con `@table(key: ["alumno", "curso"])` (clave primaria compuesta) y `fecha: Timestamp! @default(expr: "request.time")`. El emulador generó `PRIMARY KEY (alumno_id, curso_id)`, una clave foránea hacia `alumno` con `ON DELETE CASCADE` y un índice por cada clave foránea.
+- **L2 · `Inscribirme($cursoId)`:** `@auth(level: USER)`, el alumno sale de `alumnoId_expr: "auth.uid"` y usa `matricula_upsert`. Con `matricula_insert`, una segunda inscripción al mismo curso falla por clave duplicada; con `upsert` la fila ya existente simplemente se actualiza, así que repetir la operación no falla ni duplica (es idempotente). `fecha` no se envía: la completa el servidor.
+- **L3 · `MisInscripciones`:** `@auth(level: USER)`, busca con `alumno(key: { id_expr: "auth.uid" })` y no recibe ningún id como variable. La respuesta usa el alias `matriculas: matriculas_on_alumno`, que es la forma que espera `app/mis-inscripciones`.
+- **L4 · `ListAlumnos`:** estaba en `PUBLIC` ("lo necesita el panel de administración"), pero devolvía id, nombre y email de todos los alumnos sin login. La pasé a `NO_ACCESS`. Un panel de administración no debería llamar a esa operación desde el navegador: debería hacerlo desde un servidor con el Admin SDK, que no pasa por `@auth`. Una alternativa que no implementé sería dejar la operación en `USER` con una condición sobre un *custom claim* de administrador (`@auth(level: USER, expr: "auth.token.admin == true")`), asignado desde el Admin SDK.
+- **L5 · `DarmeDeBaja($cursoId)`:** `matricula_delete(key: { alumnoId_expr: "auth.uid", cursoId: $cursoId })`. La clave se arma con el UID del token, así que solo se puede borrar una inscripción propia.
+- **Ajuste en la app:** `misInscripciones()` ahora usa `fetchPolicy: QueryFetchPolicy.SERVER_ONLY`. Con la política por defecto del SDK (13.1.0), después de "Darme de baja" la lista seguía mostrando el dato viejo (se actualizaba recién con Ctrl+F5), porque la query estaba cacheada.
+
+### Auditoría con `npm run atacar` (Parte C)
+
+**Antes** (con `ListAlumnos` en `PUBLIC` y sin `Inscribirme`):
+
+```
+✔ ListCursos responde sin login (7 cursos) — público por diseño
+✘ ListAlumnos devuelve datos personales SIN login
+    Ejemplo filtrado: {"email":"ana@ejemplo.test","id":"seed-uid-ana","nombre":"Ana Ficticia"}
+… Inscribirme todavía no existe (TODO L2)
+… No se pudo inscribir al usuario A: no se pueden probar los controles de aislamiento
+❌ 1 vulnerabilidad(es) · 2 pendiente(s)
+```
+
+**Después, con el script original** (L1 a L5 aplicados):
+
+```
+✔ ListCursos responde sin login (7 cursos) — público por diseño
+✔ ListAlumnos rechazada para un cliente
+✔ Inscribirme rechazada sin login
+✔ Inscribirme es idempotente (repetir no falla)
+✔ MisInscripciones solo devuelve lo del usuario que llama
+✘ B logró borrar la inscripción de A
+❌ 1 vulnerabilidad(es) · 0 pendiente(s)
+```
+
+**El último control es un falso positivo.** Lo verifiqué por separado: A se inscribe, B llama a `DarmeDeBaja` sobre el mismo curso y recibe `{"matricula_delete": null}` (no borró nada); después A sigue viendo su inscripción, antes y después de la llamada de B. El script decide con `m.curso?.id === CURSO`, pero el emulador devuelve los UUID **sin guiones** (`0b7c1a2e00014c3a9d5e000000000003`) y la constante `CURSO` del script los tiene **con guiones** (`0b7c1a2e-0001-4c3a-9d5e-000000000003`), así que la comparación nunca coincide. Se lo consulté a la cátedra, que confirmó el diagnóstico y autorizó normalizar la comparación en mi copia. Agregué `mismoUuid(a, b)` en `scripts/atacar.mjs` (compara sin guiones y en minúsculas) y reemplacé las dos comparaciones con `===`. **Después, con el script corregido** (`atacar-despues.txt`):
+
+```
+✔ ListCursos responde sin login (7 cursos) — público por diseño
+✔ ListAlumnos rechazada para un cliente
+✔ Inscribirme rechazada sin login
+✔ Inscribirme es idempotente (repetir no falla)
+✔ MisInscripciones solo devuelve lo del usuario que llama
+✔ B no puede dar de baja a A
+✅ Todos los controles pasaron
+```
+
+**Lo que enseña este caso.** La misma comparación se usaba en el control "B no ve la inscripción de A" (`deB.some(...)`), que con el bug daba siempre "ok" porque nunca encontraba el curso, aunque la regla de autorización estuviera mal. Es decir: **una prueba de seguridad que da verde no alcanza, también tiene que ser capaz de fallar.** Para comprobarlo con el script corregido, rompí a propósito `DarmeDeBaja` para que borrara por `cursoId` sin mirar quién llama (`matricula_deleteMany(where: { cursoId: { eq: $cursoId } })`) y la auditoría marcó correctamente `✘ B logró borrar la inscripción de A`. Después restauré la versión correcta desde git y volvió a dar `✅ Todos los controles pasaron`. Con el script original el resultado hubiera sido ✘ en los dos casos, sin distinguir una regla correcta de una rota.
+
+### Producción (L6 y L7)
+
+**L6 · CSP.** La CSP de la clase 1 no definía `connect-src`, así que caía en `default-src 'self'` y bloqueaba las llamadas a Google. Identifiqué los orígenes mirando la consola con el build de producción servido por el emulador de Hosting:
+
+```
+connect-src 'self' https://firebasedataconnect.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com
+```
+
+| Origen | Para qué | Cómo lo verifiqué |
+|---|---|---|
+| `firebasedataconnect.googleapis.com` | Queries y mutations de SQL Connect | Observado como bloqueado en la consola |
+| `identitytoolkit.googleapis.com` | Auth: registro e inicio de sesión (`accounts:signUp`) | Observado como bloqueado; con el origen permitido el registro funcionó |
+| `securetoken.googleapis.com` | Auth: renovar el token de sesión (vence cada hora) | **Inferido, no observado**: en una prueba corta nunca se renueva el token |
+
+**L7 · Deploy.** `npx firebase deploy --only dataconnect` habilitó `sqladmin.googleapis.com`, creó el servicio `catalogo`, desplegó el conector `cursos` y empezó a crear la instancia Cloud SQL `catalogo-fdc` (prueba sin costo). Mientras la instancia se crea, los datos se guardan en una base temporal y el CLI omitió la migración del esquema SQL. Después ejecuté `npx firebase dataconnect:execute dataconnect/seed_data.gql` (7 cursos y 2 alumnos de ejemplo). Con el build de producción, el catálogo carga los 7 cursos y el registro de usuarios funciona.
+
+**Verificación de la migración.** Cuando la instancia terminó de crearse (tardó un rato), corrí `npx firebase dataconnect:sql:diff` y respondió:
+
+```
+Database schema of catalogo-fdc:fdcdb matches SQL Connect Schema exactly.
+```
+
+Es decir, el esquema SQL quedó aplicado en Cloud SQL sin diferencias respecto del esquema declarado en `schema.gql`: no hizo falta volver a ejecutar el deploy. El `sql:diff` sirve para auditar una migración antes de aplicarla y detectar divergencias entre la base real y lo que dice el código.
+
+### Preguntas de reflexión
+
+**1. ¿Por qué ninguna operación de este conector recibe el id del alumno como variable? ¿Qué es IDOR y cómo lo evita `auth.uid`?**
+IDOR (*Insecure Direct Object Reference*) ocurre cuando una API acepta un identificador del objeto desde el cliente y no verifica que ese objeto sea del usuario que llama. Si `MisInscripciones` recibiera `$alumnoId` y filtrara por él, cualquiera podría leer las inscripciones de otro alumno cambiando ese valor, porque el código del cliente es público y la API se puede llamar directamente. Con `id_expr: "auth.uid"` el identificador sale del **token de Firebase Auth, que el servidor verifica**, así que el cliente no puede elegirlo. Es lo que OWASP llama *Broken Object Level Authorization* (API1).
+
+**2. `ListCursos` es `PUBLIC` y `ListAlumnos` terminó en `NO_ACCESS`. ¿Qué criterio usaste? ¿Cómo haría el "panel de admin" para listar alumnos?**
+El criterio fue qué datos devuelve y quién los necesita. El catálogo es información pública (por eso `PUBLIC` exige un `insecureReason` que lo justifique). `ListAlumnos` devuelve datos personales (nombre y email) y ningún cliente legítimo del navegador necesita todos los alumnos, así que `NO_ACCESS`. Los niveles son: `PUBLIC` (cualquiera, incluso sin login), `USER` (cualquier usuario autenticado) y `NO_ACCESS` (ningún cliente, solo herramientas de administración). El panel de administración debería listar alumnos desde un servidor con el Admin SDK (que no pasa por `@auth`) o, como alternativa, con una operación `USER` restringida por un *custom claim* de admin. Que el panel "sea solo para admins" no protege nada si la operación sigue siendo llamable por cualquiera.
+
+**3. ¿Qué ventaja tiene una clave primaria compuesta en `Matricula` frente a validar duplicados en el código del cliente?**
+La garantía la da la base de datos y es atómica: dos peticiones simultáneas, otro cliente, o una llamada directa a la API no pueden crear dos filas con el mismo par (alumno, curso). Una validación en el cliente se puede saltear (el atacante no usa tu interfaz) y además tiene condiciones de carrera (dos solicitudes comprueban "no existe" a la vez y las dos insertan). Una clave UUID propia en `Matricula` no evitaría duplicados sin una restricción `UNIQUE` adicional. La regla "un alumno, una inscripción por curso" vive mejor en la base de datos, que es la última barrera. Además, la clave compuesta es lo que permite que el `upsert` de `Inscribirme` sea idempotente.
+
+**4. La configuración de Firebase (`apiKey`, etc.) es pública. ¿Por qué eso no compromete la base de datos? ¿Qué capa faltaría para frenar a alguien que usa esa config desde un script?**
+Esa configuración solo **identifica** el proyecto, no da permisos: el acceso a los datos lo deciden Firebase Auth (quién sos) y las reglas `@auth` de cada operación (qué podés hacer). Con la config pública alguien solo puede hacer lo que una operación permite a un usuario anónimo (leer el catálogo) o a una cuenta que él mismo se cree. Lo que falta es una capa que verifique que la petición viene de **mi app y no de un script**: **App Check** (atestación del cliente) y, además, límites de cuota y de tasa. Sin eso, cualquiera puede crear cuentas con el script y consumir la cuota gratuita de operaciones.
+
+**5. Comparado con una API REST propia (Express + `pg`), ¿qué te da SQL Connect y qué perdés?**
+*Gano:* no hay endpoint que acepte SQL, el cliente solo invoca operaciones por nombre (la inyección SQL queda cerrada por diseño); la autorización se declara junto a cada operación (`@auth`) y no en código disperso; integración directa con Firebase Auth; no hay servidor que mantener ni desplegar; y emuladores locales para desarrollar. *Pierdo:* flexibilidad (lógica de negocio compleja, como controlar el cupo de un curso al inscribirse, es más difícil de expresar en una operación declarativa que en código propio), dependencia del proveedor (lock-in), menos control sobre caché y observabilidad (me pasó con la caché del SDK en "Darme de baja"), y límites del plan (la prueba gratuita es de 90 días, una por proyecto, con un tope de operaciones diarias).
+
+**6. ¿Por qué no alcanzó con la CSP de la clase 1 y por qué conviene listar dominios exactos en `connect-src`?**
+La CSP de la clase 1 no definía `connect-src`, así que las llamadas `fetch` heredaban `default-src 'self'` y el navegador bloqueaba toda comunicación con Auth y SQL Connect (`Refused to connect`). Conviene listar dominios exactos porque un comodín como `https://*.googleapis.com` también permitiría conectarse a cualquier otra API de Google, incluidas las de proyectos de un atacante (por ejemplo un bucket o una base propios), y un script inyectado podría **exfiltrar** datos del usuario a ese destino. Con los tres hosts exactos, la política permite lo que la app necesita y no más (principio de mínimo privilegio).
