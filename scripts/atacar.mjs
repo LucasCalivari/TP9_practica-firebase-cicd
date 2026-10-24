@@ -53,6 +53,11 @@ async function intentar(fn) {
 
 const noExiste = (msg) => /not found|no such|unknown operation|operation.*not|does not exist|NOT_FOUND/i.test(msg);
 
+// El emulador devuelve los UUID sin guiones (0b7c1a2e00014c3a...) y CURSO los tiene con guiones.
+// Se comparan sin guiones y en minúsculas; con === nunca coincidían y los controles 4b y 4c
+// daban siempre el mismo resultado sin importar si la regla de autorización estaba bien o mal.
+const mismoUuid = (a, b) => String(a ?? "").replaceAll("-", "").toLowerCase() === String(b ?? "").replaceAll("-", "").toLowerCase();
+
 const resultados = [];
 function reportar(estado, titulo, detalle) {
   resultados.push(estado);
@@ -121,7 +126,7 @@ if (!insA.ok) {
   else if (!verB.ok) reportar("vuln", "MisInscripciones falla para un usuario autenticado", verB.error.slice(0, 140));
   else {
     const deB = verB.valor.data.alumno?.matriculas ?? [];
-    if (deB.some((m) => m.curso?.id === CURSO)) reportar("vuln", "El usuario B ve la inscripción del usuario A");
+    if (deB.some((m) => mismoUuid(m.curso?.id, CURSO))) reportar("vuln", "El usuario B ve la inscripción del usuario A");
     else reportar("ok", "MisInscripciones solo devuelve lo del usuario que llama");
   }
 
@@ -130,7 +135,7 @@ if (!insA.ok) {
   const verA = await intentar(() => executeQuery(queryRef(a.dc, "MisInscripciones")));
   if (!bajaB.ok && noExiste(bajaB.error)) reportar("pend", "DarmeDeBaja todavía no existe (TODO L5, opcional)");
   else if (verA.ok) {
-    const sigue = (verA.valor.data.alumno?.matriculas ?? []).some((m) => m.curso?.id === CURSO);
+    const sigue = (verA.valor.data.alumno?.matriculas ?? []).some((m) => mismoUuid(m.curso?.id, CURSO));
     if (sigue) reportar("ok", "B no puede dar de baja a A");
     else reportar("vuln", "B logró borrar la inscripción de A");
   }

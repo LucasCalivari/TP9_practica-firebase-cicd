@@ -1,0 +1,12 @@
+> practica-firebase-cicd@1.0.0 atacar
+> node scripts/atacar.mjs
+Auditoría de SQL Connect · proyecto practica-firebase-cicd-lucas · emuladores locales
+✔ ListCursos responde sin login (7 cursos) — público por diseño
+✔ ListAlumnos rechazada para un cliente
+    unauthorized: you are not authorized to perform this operation
+✔ Inscribirme rechazada sin login
+    unauthenticated: this operation requires a signed-in user
+✔ Inscribirme es idempotente (repetir no falla)
+✔ MisInscripciones solo devuelve lo del usuario que llama
+✔ B no puede dar de baja a A
+✅ Todos los controles pasaron

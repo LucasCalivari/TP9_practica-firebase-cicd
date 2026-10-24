@@ -174,7 +174,7 @@ Lo probé con el PR #6 (rama `test/concurrency`): abrí el PR y, mientras corrí
 ❌ 1 vulnerabilidad(es) · 2 pendiente(s)
 ```
 
-**Después** (L1 a L5 aplicados):
+**Después, con el script original** (L1 a L5 aplicados):
 
 ```
 ✔ ListCursos responde sin login (7 cursos) — público por diseño
@@ -186,7 +186,7 @@ Lo probé con el PR #6 (rama `test/concurrency`): abrí el PR y, mientras corrí
 ❌ 1 vulnerabilidad(es) · 0 pendiente(s)
 ```
 
-**El último control es un falso positivo.** Lo verifiqué por separado: A se inscribe, B llama a `DarmeDeBaja` sobre el mismo curso y recibe `{"matricula_delete": null}` (no borró nada); después A sigue viendo su inscripción, antes y después de la llamada de B. El script decide con `m.curso?.id === CURSO`, pero el emulador devuelve los UUID **sin guiones** (`0b7c1a2e00014c3a9d5e000000000003`) y la constante `CURSO` del script los tiene **con guiones** (`0b7c1a2e-0001-4c3a-9d5e-000000000003`), así que la comparación nunca coincide. Con una copia temporal del script que ignora los guiones el resultado fue:
+**El último control es un falso positivo.** Lo verifiqué por separado: A se inscribe, B llama a `DarmeDeBaja` sobre el mismo curso y recibe `{"matricula_delete": null}` (no borró nada); después A sigue viendo su inscripción, antes y después de la llamada de B. El script decide con `m.curso?.id === CURSO`, pero el emulador devuelve los UUID **sin guiones** (`0b7c1a2e00014c3a9d5e000000000003`) y la constante `CURSO` del script los tiene **con guiones** (`0b7c1a2e-0001-4c3a-9d5e-000000000003`), así que la comparación nunca coincide. Se lo consulté a la cátedra, que confirmó el diagnóstico y autorizó normalizar la comparación en mi copia. Agregué `mismoUuid(a, b)` en `scripts/atacar.mjs` (compara sin guiones y en minúsculas) y reemplacé las dos comparaciones con `===`. **Después, con el script corregido** (`atacar-despues.txt`):
 
 ```
 ✔ ListCursos responde sin login (7 cursos) — público por diseño
@@ -198,7 +198,7 @@ Lo probé con el PR #6 (rama `test/concurrency`): abrí el PR y, mientras corrí
 ✅ Todos los controles pasaron
 ```
 
-Por la misma razón, el control "B no ve la inscripción de A" no detectaría una fuga real, porque comparar con ids sin guiones nunca da verdadero. No modifiqué `scripts/atacar.mjs`. ⏳ PENDIENTE: completar con la respuesta de la cátedra sobre cómo presentar este punto.
+**Lo que enseña este caso.** La misma comparación se usaba en el control "B no ve la inscripción de A" (`deB.some(...)`), que con el bug daba siempre "ok" porque nunca encontraba el curso, aunque la regla de autorización estuviera mal. Es decir: **una prueba de seguridad que da verde no alcanza, también tiene que ser capaz de fallar.** Para comprobarlo con el script corregido, rompí a propósito `DarmeDeBaja` para que borrara por `cursoId` sin mirar quién llama (`matricula_deleteMany(where: { cursoId: { eq: $cursoId } })`) y la auditoría marcó correctamente `✘ B logró borrar la inscripción de A`. Después restauré la versión correcta desde git y volvió a dar `✅ Todos los controles pasaron`. Con el script original el resultado hubiera sido ✘ en los dos casos, sin distinguir una regla correcta de una rota.
 
 ### Producción (L6 y L7)
 
@@ -216,7 +216,13 @@ connect-src 'self' https://firebasedataconnect.googleapis.com https://identityto
 
 **L7 · Deploy.** `npx firebase deploy --only dataconnect` habilitó `sqladmin.googleapis.com`, creó el servicio `catalogo`, desplegó el conector `cursos` y empezó a crear la instancia Cloud SQL `catalogo-fdc` (prueba sin costo). Mientras la instancia se crea, los datos se guardan en una base temporal y el CLI omitió la migración del esquema SQL. Después ejecuté `npx firebase dataconnect:execute dataconnect/seed_data.gql` (7 cursos y 2 alumnos de ejemplo). Con el build de producción, el catálogo carga los 7 cursos y el registro de usuarios funciona.
 
-⏳ PENDIENTE: cuando la instancia termine de crearse, correr `npx firebase dataconnect:sql:diff`, pegar acá su salida y analizarla (si muestra diferencias, volver a ejecutar `deploy --only dataconnect`). También probar una inscripción en producción y anotar el resultado.
+**Verificación de la migración.** Cuando la instancia terminó de crearse (tardó un rato), corrí `npx firebase dataconnect:sql:diff` y respondió:
+
+```
+Database schema of catalogo-fdc:fdcdb matches SQL Connect Schema exactly.
+```
+
+Es decir, el esquema SQL quedó aplicado en Cloud SQL sin diferencias respecto del esquema declarado en `schema.gql`: no hizo falta volver a ejecutar el deploy. El `sql:diff` sirve para auditar una migración antes de aplicarla y detectar divergencias entre la base real y lo que dice el código.
 
 ### Preguntas de reflexión
 
