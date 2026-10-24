@@ -149,7 +149,7 @@ Lo probé con el PR #6 (rama `test/concurrency`): abrí el PR y, mientras corrí
 ## Clase 2 · SQL Connect
 
 - **Repo:** https://github.com/LucasCalivari/TP9_practica-firebase-cicd (mismo repo y mismo proyecto Firebase que la clase 1)
-- **PR con el cambio de CSP (L6):** ⏳ PENDIENTE: completar con el link del PR mergeado
+- **PR mergeado con el cambio de CSP (L6) y toda la clase 2:** https://github.com/LucasCalivari/TP9_practica-firebase-cicd/pull/8
 - **Producción:** https://practica-firebase-cicd-lucas.web.app
 
 ### Decisiones de modelado y operaciones (L1 a L5)
