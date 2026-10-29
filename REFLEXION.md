@@ -243,3 +243,109 @@ Esa configuración solo **identifica** el proyecto, no da permisos: el acceso a 
 
 **6. ¿Por qué no alcanzó con la CSP de la clase 1 y por qué conviene listar dominios exactos en `connect-src`?**
 La CSP de la clase 1 no definía `connect-src`, así que las llamadas `fetch` heredaban `default-src 'self'` y el navegador bloqueaba toda comunicación con Auth y SQL Connect (`Refused to connect`). Conviene listar dominios exactos porque un comodín como `https://*.googleapis.com` también permitiría conectarse a cualquier otra API de Google, incluidas las de proyectos de un atacante (por ejemplo un bucket o una base propios), y un script inyectado podría **exfiltrar** datos del usuario a ese destino. Con los tres hosts exactos, la política permite lo que la app necesita y no más (principio de mínimo privilegio).
+
+
+---
+---
+
+## Práctica 4 · Firestore
+
+- **Repo:** https://github.com/LucasCalivari/TP9_practica-firebase-cicd (mismo repo y mismo proyecto Firebase que las clases anteriores)
+- **PR mergeado con reglas, índice y CSP:** https://github.com/LucasCalivari/TP9_practica-firebase-cicd/pull/10
+- **Producción:** https://practica-firebase-cicd-lucas.web.app
+
+### Qué se construyó
+
+| Pieza | Archivo |
+|---|---|
+| Capa de acceso a datos (escribir, escuchar en tiempo real, agregación) | `lib/resenas.ts` |
+| Formulario, lista en vivo, resumen y filtro de 5 estrellas | `app/components/ResenasCurso.tsx` (montado en cada tarjeta del catálogo con un botón **Reseñas**, en `CatalogoSql.tsx`) |
+| Reglas de seguridad | `firestore.rules` |
+| Tests de reglas contra el emulador | `tests/reglas.test.mjs` |
+| Índice compuesto como código | `firestore.indexes.json` |
+| CSP con `https://firestore.googleapis.com` en `connect-src` | `firebase.json` |
+
+Modelo de datos: `cursos/{cursoId}/resenas/{uid}` con `puntaje`, `texto`, `autor` y `creadaEn`. El id del documento es el UID del autor y `creadaEn` lo pone el servidor con `serverTimestamp()`. El `cursoId` es el UUID del curso en SQL Connect.
+
+### Evidencia
+
+**1. Tiempo real entre dos navegadores** (emulador local, cuentas distintas). A la izquierda, el navegador de Ana ve la reseña que Pablo publicó desde el otro; a la derecha, el de Pablo ve la de Ana, sin recargar la página:
+
+![Navegador de Ana viendo la reseña de Pablo](docs/p4/tiempo-real-navegador-ana.png)
+![Navegador de Pablo viendo la reseña de Ana](docs/p4/tiempo-real-navegador-pablo.png)
+
+La misma prueba se repitió después en el preview del PR, con cuentas reales y contra el Firestore de producción, sin errores.
+
+**2. Tests de reglas: 13 en verde** (`npm run test:reglas`): los 8 casos de la consigna más 5 propios (texto vacío o de más de 500 caracteres, autor vacío o de más de 80, editar la reseña ajena, borrar la reseña ajena, y cualquier otra ruta cerrada).
+
+```
+✔ cualquiera puede leer reseñas, incluso sin login
+✔ Ana puede crear SU reseña
+✔ Ana NO puede crear una reseña a nombre de Bruno
+✔ sin login no se puede escribir
+✔ puntaje fuera de rango o con decimales se rechaza
+✔ no se pueden agregar campos extra (p. ej. destacada: true)
+✔ la fecha de creación la pone el servidor y no se puede cambiar
+✔ el cliente no puede escribir el documento del curso
+✔ el texto vacío o de más de 500 caracteres se rechaza
+✔ el nombre del autor no puede estar vacío ni superar 80 caracteres
+✔ Bruno NO puede editar la reseña de Ana
+✔ Bruno NO puede borrar la reseña de Ana, pero Ana sí puede borrar la suya
+✔ cualquier otra ruta está cerrada (lista blanca)
+ℹ tests 13 · pass 13 · fail 0
+```
+
+![Salida de npm run test:reglas](docs/p4/tests-reglas-13-en-verde.png)
+
+**3. Haberlos hecho fallar.** Cambié en `firestore.rules` el tope `d.puntaje <= 5` por `<= 6` y volví a correr los tests. Se puso en rojo exactamente el que corresponde y los otros 12 siguieron en verde, de modo que los tests sí detectan el error:
+
+```
+✖ puntaje fuera de rango o con decimales se rechaza
+    Error: Expected request to fail, but it succeeded.
+ℹ pass 12 · fail 1
+```
+
+Después restauré `<= 5` y volvieron los 13 en verde. Un test de seguridad que nunca puede fallar no prueba nada.
+
+**4. Seguridad en vivo contra producción.** Desde la consola del navegador, en el preview, con la sesión real de Bruno (su token de Firebase Auth), traté de escribir directamente en el documento de la reseña de Ana por la API REST de Firestore, salteando mi interfaz. Firestore respondió `403 PERMISSION_DENIED`:
+
+```
+Sesión abierta como: bruno.prueba@example.test | uid: cyKliupbqbhrO9CL6tumsxRwkbp1
+Esta sesión escribe en la reseña de ANA -> 403 PERMISSION_DENIED
+```
+
+![403 PERMISSION_DENIED](docs/p4/seguridad-403-permission-denied.png)
+
+Un matiz: en ese curso la única reseña existente era la de Bruno, así que el intento fue de **crear** una reseña con el id de Ana y lo frenó la regla de creación (`esDuenio(uid)`). El caso de **editar** una reseña ajena que ya existe lo cubre el test automático `Bruno NO puede editar la reseña de Ana`.
+
+### Decisiones, cambios respecto del PDF y problemas encontrados
+
+- **Índice compuesto (Paso 8).** Declaré `puntaje` ascendente y `creadaEn` descendente en `firestore.indexes.json` y lo desplegué con `firebase deploy --only firestore:rules,firestore:indexes`. El emulador de Firestore **no exige índices**: la consulta de "Solo 5 estrellas" funciona en desarrollo aunque falte el índice, y la falla (`FAILED_PRECONDITION`) aparece recién en producción. Por eso los índices tienen que estar declarados en el repo y desplegarse, no depender de lo que se vea en local.
+- **Reglas más estrictas que las de la consigna.** Agregué `texto.size() >= 1` y `autor.size() >= 1` (no se aceptan reseñas vacías) y los tests correspondientes.
+- **`guardarResena` consulta si la reseña existe** con `getDoc`, en lugar de confiar en la lista en pantalla (limitada a 20 y posiblemente filtrada): si mi reseña no estuviera en esa lista, se intentaría crear de nuevo con `serverTimestamp()` y las reglas rechazarían el cambio de fecha.
+- **Escrituras pendientes.** `onSnapshot` usa `includeMetadataChanges: true` y cada reseña lleva `pendiente: d.metadata.hasPendingWrites`, así la interfaz muestra "(enviando…)" hasta que el servidor confirma. Esos avisos de solo metadatos no consumen lecturas.
+- **El resumen se quedaba desactualizado.** Probando con dos navegadores vi que, justo después de publicar, la lista tenía 2 reseñas pero el título decía `★ 5.0 (1)`. La lista se actualiza al instante (compensación de latencia) pero la agregación la calcula el servidor, que todavía no tenía la escritura confirmada. Además, editar el puntaje no cambia la cantidad, así que no se volvía a pedir. Lo corregí: el resumen se vuelve a calcular cuando cambia el contenido de la lista (uid y puntaje de cada reseña, no solo la cantidad) y cuando el servidor confirma una escritura propia, y se descartan las respuestas viejas que lleguen tarde.
+- **Node 24 y `node --test tests/`.** El script del PDF falla en Node 24 porque toma `tests/` como si fuera un archivo y no como una carpeta. Usé `node --test tests/*.test.mjs`.
+- **El emulador de Firestore no arrancaba en Windows.** Java 24 usa un socket de archivo en la carpeta temporal para armar un pipe interno, y fallaba con `Unable to establish loopback connection` / `Invalid argument: connect`. Lo resolví apuntándolo a una carpeta corta (`JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:\javatmp`). Además, el `java.exe` del PATH es un lanzador intermedio y, al terminar, el emulador quedaba **huérfano** ocupando el puerto 8080; poniendo el JDK directo al principio del PATH (`C:\Program Files\Java\jdk-24\bin`) se cierra solo.
+- **Limitación de diseño que conviene reconocer.** Las reglas **no verifican que quien reseña esté inscripto** en el curso: esa información vive en PostgreSQL (SQL Connect) y Firestore no puede consultarla desde las reglas. Hoy cualquier usuario autenticado puede reseñar cualquier curso. Para exigirlo habría que validarlo del lado del servidor (Práctica 5).
+- **`autor` no es verificable.** Es un texto que manda el cliente; las reglas solo validan tipo y largo, así que alguien podría escribir el nombre de otra persona. Se podría exigir que coincida con el nombre del token de Auth (`request.auth.token.name`) desde las reglas.
+
+### Preguntas de reflexión
+
+**1. ¿Por qué el id del documento es el UID? ¿Qué tendrías que agregar (en reglas o en código) si usaras ids aleatorios con `addDoc`?**
+Porque así "una reseña por persona y curso" queda garantizado por la **estructura**: escribir de nuevo apunta al mismo documento y lo actualiza, sin duplicar. Además las reglas pueden comparar el id con `request.auth.uid` (`esDuenio(uid)`) sin leer nada más. Con ids aleatorios (`addDoc`) tendría que (a) guardar un campo `uid` en el documento y exigir en las reglas que `request.resource.data.uid == request.auth.uid`, para saber quién es el dueño al editar o borrar (con `resource.data.uid`); y (b) resolver aparte la unicidad: las reglas no pueden prohibir una segunda reseña del mismo usuario sin una consulta (no admiten consultas por campo), así que hace falta una convención de id, una transacción o una Cloud Function. Y para mostrar "mi reseña" habría que hacer una consulta `where("uid", "==", mi_uid)` en vez de leer directamente un documento.
+
+**2. La reseña guarda una copia del nombre del autor. ¿Qué ganás y qué perdés con esa desnormalización? ¿Cómo resolverías el cambio de nombre?**
+*Gano:* mostrar la lista no requiere una lectura adicional por reseña para buscar el nombre; con `limit(20)` es una sola consulta, menos lecturas (y cuota) y menos latencia. *Pierdo:* consistencia, porque si alguien cambia su nombre, sus reseñas viejas conservan el anterior; y el nombre lo manda el cliente, así que hoy no es verificable (podría escribir el de otro). Para el cambio de nombre: una Cloud Function que, al actualizar el perfil, actualice las reseñas de ese usuario (para encontrarlas hace falta un campo `uid` y una consulta de grupo de colección); o guardar solo el UID y buscar el nombre en un documento de perfil público al mostrar la lista (más lecturas); o aceptar que las reseñas históricas conservan el nombre de cuando se escribieron. Para la verificación, la regla puede exigir `autor == request.auth.token.name`.
+
+**3. ¿Qué diferencia hay entre `resource.data` y `request.resource.data`? Dá un ejemplo de regla que use ambos.**
+`resource.data` es el documento **como está guardado ahora** (antes de la escritura; no existe al crear). `request.resource.data` es el documento **como quedaría después** de la escritura (en una actualización con `merge`, ya combinado con lo existente). Mi regla de edición usa los dos: `request.resource.data.creadaEn == resource.data.creadaEn`, que dice que la fecha resultante tiene que ser igual a la que ya estaba guardada (la fecha es inmutable), mientras que `resenaValida()` valida el estado final con `request.resource.data`.
+
+**4. ¿Por qué la regla de creación exige `creadaEn == request.time` en lugar de confiar en la fecha del cliente?**
+El reloj del cliente no es confiable: puede estar mal configurado o ser manipulado a propósito, y con eso alguien podría postergar o adelantar sus reseñas, o ponerlas primero en el orden por fecha. `serverTimestamp()` se resuelve en el servidor y es igual a `request.time`, por lo que exigir esa igualdad garantiza que la fecha es la hora real de la escritura y que el orden de la lista no se puede falsear. En el test se ve: crear con una fecha de 2020 falla; con `serverTimestamp()` funciona; y después de creada no se puede cambiar.
+
+**5. ¿Qué limitación tiene `getAggregateFromServer` y cómo afecta la experiencia de usuario? ¿Qué alternativas hay?**
+No funciona con *listeners* en tiempo real ni offline: se calcula en el servidor cada vez que se pide, así que el resumen (promedio y cantidad) no se actualiza solo como la lista. Lo viví en la práctica: tras publicar, el título quedó con el número viejo hasta que lo volví a pedir cuando el servidor confirmó la escritura. Además cada pedido cuesta una lectura por cada lote de 1.000 entradas de índice. Alternativas: mantener el resumen (`cantidad` y `suma`) dentro del documento del curso, actualizado desde el servidor con una Cloud Function (es lo que se plantea en la Práctica 5) y escucharlo con `onSnapshot`; contadores distribuidos si hay muchas escrituras por segundo; o calcular el promedio en el cliente con las reseñas ya cargadas, que es barato pero inexacto con más de 20.
+
+**6. Para inscripciones con cupo máximo, ¿usarías Firestore o SQL Connect? Justificá con lo que viste en las dos prácticas.**
+**SQL Connect (PostgreSQL).** Una inscripción con cupo necesita que "contar las inscriptas y agregar una más" sea **atómico y consistente**, y que el dato de las inscripciones sea íntegro: la clave primaria compuesta de `Matricula` ya garantiza una inscripción por alumno y curso, y las claves foráneas impiden inscribir a un alumno o un curso inexistente. En Firestore las reglas no pueden consultar cuántos documentos hay (no hay `COUNT` en las reglas), así que para controlar el cupo hace falta una transacción del lado del servidor o un contador en un documento, que además se vuelve un punto caliente de escritura. Firestore es mejor para lo que vimos hoy: reseñas en vivo, sin relaciones que validar, donde lo importante es que el cliente lea y escriba directo y reciba los cambios en tiempo real. Son herramientas para problemas distintos: relacional para integridad y cupos, documental para tiempo real y flexibilidad.
