@@ -24,3 +24,5 @@ dataconnect/.dataconnect/
 # varios
 .env*.local
 .DS_Store
+
+firestore-debug.log
