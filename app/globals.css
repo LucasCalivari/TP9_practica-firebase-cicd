@@ -141,3 +141,18 @@ a { color: var(--accent); }
 .alerta { padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--border); }
 .alerta--ok { background: #ebfbee; border-color: #b2f2bb; color: #2b8a3e; }
 .alerta--error { background: #fff5f5; border-color: #ffc9c9; color: #c92a2a; display: block; }
+
+/* ── Práctica 4 · Reseñas (Firestore) ───────────────────────────────────── */
+.acciones { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.panel-resenas { margin: 16px 0; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.panel-resenas__cabecera { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.resenas h3 { margin: 0 0 8px; }
+.resenas__filtro { display: block; margin-bottom: 10px; font-size: 0.95rem; color: var(--muted); }
+.resenas__form { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.resenas__form select, .resenas__form textarea {
+  padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit;
+}
+.resenas__form textarea { min-height: 70px; resize: vertical; }
+.resenas__acciones { display: flex; gap: 8px; }
+.resenas__lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.resenas__lista li { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }

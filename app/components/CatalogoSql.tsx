@@ -6,6 +6,7 @@ import type { Curso } from "@/lib/cursos";
 import { inscribirme, listarCursos, mensajeDeError } from "@/lib/sqlconnect";
 import { useUsuario } from "@/lib/useUsuario";
 import FiltroCursos from "./FiltroCursos";
+import ResenasCurso from "./ResenasCurso";
 
 type Estado = { tipo: "cargando" } | { tipo: "error"; mensaje: string } | { tipo: "ok"; cursos: Curso[] };
 
@@ -14,6 +15,8 @@ export default function CatalogoSql() {
   const [estado, setEstado] = useState<Estado>({ tipo: "cargando" });
   const [aviso, setAviso] = useState<string | null>(null);
   const [enCurso, setEnCurso] = useState<string | null>(null);
+  // Curso cuyas reseñas se están mostrando (Práctica 4). Solo uno a la vez.
+  const [conResenas, setConResenas] = useState<Curso | null>(null);
 
   useEffect(() => {
     listarCursos()
@@ -51,17 +54,34 @@ export default function CatalogoSql() {
           {aviso} {aviso.startsWith("✔") && <Link href="/mis-inscripciones">Ver mis inscripciones →</Link>}
         </p>
       )}
+      {conResenas && (
+        <div className="panel-resenas">
+          <div className="panel-resenas__cabecera">
+            <strong>{conResenas.titulo}</strong>
+            <button type="button" className="link" onClick={() => setConResenas(null)}>
+              Cerrar
+            </button>
+          </div>
+          {/* key: al cambiar de curso se desmonta el componente y se cancela su suscripción. */}
+          <ResenasCurso key={conResenas.id} cursoId={conResenas.id} uid={usuario?.uid ?? null} />
+        </div>
+      )}
       <FiltroCursos
         cursos={estado.cursos}
-        accion={(c) =>
-          usuario ? (
-            <button type="button" className="button button--small" disabled={enCurso === c.id} onClick={() => onInscribirme(c)}>
-              {enCurso === c.id ? "Inscribiendo…" : "Inscribirme"}
+        accion={(c) => (
+          <div className="acciones">
+            {usuario ? (
+              <button type="button" className="button button--small" disabled={enCurso === c.id} onClick={() => onInscribirme(c)}>
+                {enCurso === c.id ? "Inscribiendo…" : "Inscribirme"}
+              </button>
+            ) : (
+              <small className="hint">Ingresá para inscribirte</small>
+            )}
+            <button type="button" className="button button--small button--ghost" onClick={() => setConResenas(c)}>
+              Reseñas
             </button>
-          ) : (
-            <small className="hint">Ingresá para inscribirte</small>
-          )
-        }
+          </div>
+        )}
       />
     </>
   );
