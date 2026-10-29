@@ -9,10 +9,10 @@
     "typecheck": "tsc --noEmit",
     "serve": "firebase emulators:start --only hosting",
     "deploy:preview": "firebase hosting:channel:deploy local-test --expires 1d",
-    "emulators": "firebase emulators:start --only auth,dataconnect",
+    "emulators": "firebase emulators:start --only auth,dataconnect,firestore",
     "seed": "node scripts/seed.mjs",
     "atacar": "node scripts/atacar.mjs",
-    "test:reglas": "firebase emulators:exec --only firestore \"node --test tests/\""
+    "test:reglas": "firebase emulators:exec --only firestore \"node --test tests/*.test.mjs\""
   },
   "dependencies": {
     "firebase": "^13.1.0",
